@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Local account database and collected samples
+data/accepted/*.json
+data/rejected/*.json
+data/review_logs/**
+data/*.sqlite
+data/*.sqlite3
+data/*.db
+
+# Environment variables
+.env
+.env.*
+
+# IDE files
+.vscode/
+.idea/
+
+# Temporary files
+*.log
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
