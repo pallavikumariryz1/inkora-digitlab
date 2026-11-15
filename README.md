@@ -6,7 +6,7 @@ A Streamlit learning application for handwritten digit recognition with:
 - One to ten independent drawing slots, each with its own intended-digit selector.
 - Image refinement that crops the ink, preserves the full drawing and centres it by intensity-weighted centre of mass.
 - A CNN trained on MNIST, plus an automated validation agent.
-- A clearer directional neural-network animation showing how the signal moves from pixels to class scores.
+- An interactive, animated forward-pass visualisation driven by the selected drawing and the trained CNN: pixel input, a learned 3×3 kernel, actual convolution activations, pooled feature maps, representative dense neurons, learned dense weights, and the ten real class probabilities.
 - A local sign-up/sign-in screen with salted PBKDF2 password hashes (prototype authentication only).
 - An animated front-facing globe with a vertically spinning longitude grid, light and glow.
 
@@ -61,6 +61,7 @@ digit_recognition_studio_indigo_pencil/
 ├── README.md
 ├── modules/
 │   ├── __init__.py
+│   ├── visualizer.py
 │   ├── refinery.py
 │   ├── classifier.py
 │   └── agent.py
@@ -80,7 +81,7 @@ The network used here is:
 
 `28×28×1 → Conv(32) → MaxPool → Conv(64) → MaxPool → Flatten → Dense(128) → Dropout → Dense(10, Softmax)`
 
-The animated neural-network graphic is conceptual. The actual numerical inference is performed by the saved Keras model.
+The interactive forward-pass visualisation is generated from the actual saved Keras model. It shows selected activation channels and 18 representative neurons from the 128-neuron dense layer for readability; the model still computes every channel, neuron, weight and output. The animated 3×3 filter overlay uses the first learned convolution kernel. The dense-layer connection colours and widths are derived from the selected trained weights. The animation is an explanatory rendering of real inference values, not a substitute for the TensorFlow computation.
 
 
 ## Local authentication note

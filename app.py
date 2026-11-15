@@ -10,19 +10,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 from streamlit_drawable_canvas import st_canvas
 
 from modules.refinery import refine_digit
 from modules.classifier import load_model, predict, extract_feature_maps, extract_first_layer_kernels, MODEL_PATH
 from modules.agent import verify_sample
+from modules.visualizer import build_trace, render_forward_pass
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 for folder in ["accepted", "rejected", "review_logs"]:
     (DATA / folder).mkdir(parents=True, exist_ok=True)
 
-st.set_page_config(page_title="Digit Recognition Studio", page_icon="✎", layout="wide")
+st.set_page_config(page_title="INKORA DigitLab", page_icon="✎", layout="wide")
 
 CSS = """
 <style>
@@ -97,75 +99,6 @@ button[kind="secondary"],button[kind="secondary"] p{color:#fff!important;backgro
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
-
-def neural_svg():
-    """A directional teaching diagram: pixels -> learned features -> digit scores."""
-    width, height = 980, 430
-    parts = [
-        f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Forward flow through a convolutional neural network">',
-        '<defs><marker id="flowArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#d5b76f"/></marker></defs>'
-    ]
-    # Column headings
-    headings = [(92, "INPUT PIXELS"), (330, "CONVOLUTION"), (565, "FEATURES"), (790, "CLASS SCORES")]
-    for x, label in headings:
-        parts.append(f'<text x="{x}" y="28" class="neural-caption">{label}</text>')
-
-    # Input pixel patch
-    parts.append('<rect x="43" y="78" width="98" height="112" rx="8" fill="#20232b" stroke="#d5b76f"/>')
-    for r in range(7):
-        for c in range(7):
-            # Illustrative digit-like intensity field
-            bright = (c in (2, 3, 4) and r in (0, 1, 5, 6)) or (r in (2, 3, 4) and c in (1, 5))
-            fill = "#e8e4d9" if bright else "#454a56"
-            parts.append(f'<rect x="{51+c*12}" y="{86+r*14}" width="10" height="12" rx="1" fill="{fill}"/>')
-    parts.append('<text x="92" y="218" fill="#f4f0e6" font-size="13" text-anchor="middle">28 × 28 × 1</text>')
-    parts.append('<text x="92" y="237" fill="#b9bdca" font-size="11" text-anchor="middle">784 values</text>')
-
-    # Feature-map tiles
-    for x, tint in [(290, "#42a8bd"), (326, "#d5b76f"), (362, "#d97965")]:
-        parts.append(f'<rect x="{x}" y="95" width="58" height="74" rx="5" fill="#20232b" stroke="{tint}" stroke-width="2"/>')
-        for r in range(4):
-            for c in range(4):
-                op = .25 + ((r*3+c*5) % 6)*.11
-                parts.append(f'<rect x="{x+7+c*11}" y="{102+r*15}" width="8" height="11" fill="{tint}" opacity="{op:.2f}"/>')
-    parts.append('<text x="330" y="218" fill="#f4f0e6" font-size="13" text-anchor="middle">Filters detect edges</text>')
-    parts.append('<text x="330" y="237" fill="#b9bdca" font-size="11" text-anchor="middle">curves · corners · strokes</text>')
-
-    # Feature hierarchy blocks
-    for x, n, color in [(510, 5, "#42a8bd"), (548, 4, "#d5b76f"), (586, 3, "#d97965")]:
-        for i in range(n):
-            y = 83 + i*24
-            parts.append(f'<rect x="{x}" y="{y}" width="27" height="17" rx="4" fill="{color}" opacity="{.38 + i*.1:.2f}" stroke="{color}"/>')
-    parts.append('<text x="565" y="218" fill="#f4f0e6" font-size="13" text-anchor="middle">Pooling + deeper patterns</text>')
-    parts.append('<text x="565" y="237" fill="#b9bdca" font-size="11" text-anchor="middle">compact feature maps</text>')
-
-    # Dense hidden layer and ten output bars
-    hidden_x = [710, 748]
-    hidden_y = [88, 119, 150, 181, 212]
-    for x in hidden_x:
-        for y in hidden_y:
-            parts.append(f'<circle cx="{x}" cy="{y}" r="8" fill="#f4f0e6" stroke="#d5b76f" stroke-width="1.4"/>')
-    output_x = 872
-    for digit in range(10):
-        y = 75 + digit*23
-        parts.append(f'<text x="908" y="{y+4}" fill="#f4f0e6" font-size="12">{digit}</text>')
-        parts.append(f'<rect x="868" y="{y-7}" width="25" height="13" rx="3" fill="#343b4c"/>')
-        parts.append(f'<rect x="868" y="{y-7}" width="{5 + (digit*7)%20}" height="13" rx="3" fill="#d5b76f" opacity=".9"/>')
-    parts.append('<text x="790" y="335" fill="#f4f0e6" font-size="13" text-anchor="middle">Dense layer combines evidence</text>')
-    parts.append('<text x="885" y="335" fill="#f4f0e6" font-size="13" text-anchor="middle">Softmax</text>')
-
-    # Directional arrows between stages
-    for x1, x2 in [(151, 270), (450, 495), (620, 685), (770, 850)]:
-        parts.append(f'<path d="M{x1} 275 L{x2} 275" stroke="#d5b76f" stroke-width="2" marker-end="url(#flowArrow)" opacity=".9"/>')
-    parts.append('<text x="490" y="390" fill="#d5b76f" font-size="13" text-anchor="middle">FORWARD PASS: each layer transforms the signal before the next layer receives it →</text>')
-
-    # Animated travelling signals along the four stage connectors.
-    for x1, x2, color, delay in [(155, 265, "#42c4d9", "0s"), (455, 490, "#d5b76f", ".35s"), (625, 680, "#e17a68", ".7s"), (775, 845, "#f4f0e6", "1.05s")]:
-        path_id = f"signal{int(x1)}"
-        parts.append(f'<path id="{path_id}" d="M{x1} 275 L{x2} 275" fill="none" stroke="none"/>')
-        parts.append(f'<circle r="5" fill="{color}" filter="drop-shadow(0 0 6px {color})"><animateMotion dur="1.7s" begin="{delay}" repeatCount="indefinite"><mpath href="#{path_id}"/></animateMotion></circle>')
-    parts.append('</svg>')
-    return "".join(parts)
 
 def show_empty_dialog(slot_number):
     @st.dialog("A little blank space!")
@@ -490,6 +423,13 @@ def results():
     st.divider()
     st.markdown("### How the neural network understood your first digit")
     first_record,first_image,first_probs,_ = outcomes[0]
+    st.markdown("#### Watch the actual forward pass")
+    st.caption("This animation is driven by the refined input, intermediate activations, learned dense-layer weights and class probabilities from your trained CNN. It displays representative neurons for readability; the model itself still computes all 128 hidden neurons and all 10 outputs.")
+    try:
+        trace = build_trace(st.session_state.get("active_model"), first_image, first_probs)
+        components.html(render_forward_pass(trace), height=1100, scrolling=False)
+    except Exception as exc:
+        st.warning(f"The interactive forward-pass animation could not be prepared: {exc}")
     st.markdown("### 1 · The exact image entering the CNN")
     st.caption("The refined drawing is normalised from 0–255 to 0–1 and reshaped to (1, 28, 28, 1).")
     st.code("Input tensor: (1, 28, 28, 1)\nConv2D(32, 3×3, ReLU, same): (1, 28, 28, 32)\nMaxPool(2×2): (1, 14, 14, 32)\nConv2D(64, 3×3, ReLU, same): (1, 14, 14, 64)\nMaxPool(2×2): (1, 7, 7, 64)\nFlatten: 3,136 values → Dense(128) → Dropout(0.25) → Dense(10, Softmax)", language="text")
